@@ -1,4 +1,5 @@
 mod background_worker;
+mod helper_functions;
 mod init;
 mod types;
 
@@ -12,6 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
+use tower_http::cors::{Any, CorsLayer};
 use types::*;
 
 impl Clone for AppState {
@@ -106,16 +108,21 @@ async fn main() {
         .await;
     });
 
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     // Build Axum router with chained paths
     let app = Router::new()
         .route("/metrics", get(get_metrics))
         .route("/change-interval", get(change_interval))
-        .with_state(state);
+        .with_state(state)
+        .layer(cors);
 
     // Start server
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("🚀 High-performance telemetry server on http://0.0.0.0:3000/metrics");
-    println!("🔄 Background updater running every 5 seconds...");
+    println!("Telemetry server ready on http://0.0.0.0:3000/metrics");
 
     axum::serve(listener, app).await.unwrap();
 }

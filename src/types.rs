@@ -7,9 +7,11 @@ use tokio_util::sync::CancellationToken;
 pub struct MetricsSnapshot {
     pub hostname: String,
     pub cpu: CPUInfo,
+    pub ram_sticks: Vec<RamStick>,
     pub memory: MemoryInfo,
     pub swap: SwapInfo,
     pub gpu: GPUInfo,
+    pub temp_sensor_readings: Vec<TempSensorReading>,
     pub network_interfaces: NetworkInterfaces,
     pub uptime_secs: u64,
     pub polling_interval_secs: u8,
@@ -144,6 +146,17 @@ pub struct GPUPcieDynamicInfo {
     pub rx_throughput: f64,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct TempSensorReading {
+    pub id: String,                // e.g., "hwmon2_1"
+    pub chip: String,              // e.g., "k10temp" or "gigabyte_wmi"
+    pub sensor: String,            // e.g., "Tctl" or "temp1"
+    pub raw_label: String,         // e.g., "k10temp Tctl"
+    pub temp_celsius: Option<f32>, // e.g., Some(58.0)
+    pub max_celsius: Option<f32>,  // e.g., Some(70.0)
+    pub crit_celsius: Option<f32>, // e.g., Some(70.0)
+}
+
 #[derive(Serialize)]
 pub struct JsonResponse {
     pub ok: bool,
@@ -160,4 +173,11 @@ pub struct AppState {
     pub metrics: Arc<RwLock<MetricsSnapshot>>,
     pub interval_secs: Arc<RwLock<u64>>,
     pub cancel_token: Arc<RwLock<CancellationToken>>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct RamStick {
+    pub slot: u32,
+    pub manufacturer: Option<String>,
+    pub part_number: Option<String>,
 }

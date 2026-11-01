@@ -11,6 +11,7 @@ impl Default for MetricsSnapshot {
                 frequency: vec![],
                 avg_frequency: 0.0,
             },
+            ram_sticks: vec![],
             memory: MemoryInfo {
                 total_gb: 0.0,
                 used_gb: 0.0,
@@ -26,6 +27,7 @@ impl Default for MetricsSnapshot {
                 static_info: GPUStaticInfo::default(),
                 dynamic_info: GPUDynamicInfo::default(),
             },
+            temp_sensor_readings: vec![],
             network_interfaces: vec![],
             uptime_secs: 0,
             polling_interval_secs: 5,

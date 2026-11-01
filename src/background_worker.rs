@@ -1,6 +1,8 @@
+use crate::helper_functions::*;
 use crate::types::*;
 use chrono::Local;
 use regex::Regex;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -11,13 +13,6 @@ use sysinfo::{Components, System};
 use tokio::sync::RwLock;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
-
-fn read_sys_file(interface: &str, file: &str) -> String {
-    let path = format!("/sys/class/net/{}/{}", interface, file);
-    fs::read_to_string(path)
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|_| "0".to_string())
-}
 
 pub fn parse_gpu_static_info() -> Result<GPUStaticInfo, String> {
     let output = Command::new("nvidia-smi")
@@ -256,6 +251,91 @@ pub fn parse_gpu_dynamic_info() -> Result<GPUDynamicInfo, String> {
     Ok(dynamic_info)
 }
 
+pub fn collect_temperatures(components: &mut Components) -> Vec<TempSensorReading> {
+    // Refresh only the temperature values of existing discovered components
+    for comp in components.iter_mut() {
+        comp.refresh();
+    }
+
+    components
+        .iter()
+        .map(|comp| {
+            let raw_label = comp.label().to_string();
+
+            // Split "k10temp Tctl" into ("k10temp", "Tctl")
+            let (chip, sensor) = raw_label
+                .split_once(' ')
+                .map(|(c, s)| (c.to_string(), s.to_string()))
+                .unwrap_or_else(|| ("unknown".to_string(), raw_label.clone()));
+
+            TempSensorReading {
+                id: comp.id().unwrap_or("unknown").to_string(),
+                chip,
+                sensor,
+                raw_label,
+                temp_celsius: clean_float(comp.temperature()),
+                max_celsius: clean_float(comp.max()),
+                crit_celsius: clean_float(comp.critical()),
+            }
+        })
+        .collect()
+}
+
+pub fn get_populated_ram() -> Result<Vec<RamStick>, String> {
+    let output = Command::new("udevadm")
+        .arg("info")
+        .arg("-e")
+        .output()
+        .map_err(|e| format!("Failed to execute udevadm: {}", e))?;
+
+    if !output.status.success() {
+        return Err("udevadm command returned a non-zero exit status".to_string());
+    }
+
+    let stdout_str = String::from_utf8_lossy(&output.stdout);
+    let mut ram_slots_map: BTreeMap<u32, RamStick> = BTreeMap::new();
+
+    for line in stdout_str.lines() {
+        if !line.contains("MEMORY_DEVICE_") {
+            continue;
+        }
+
+        if let Some((key, value)) = line.split_once('=') {
+            let clean_value = value.trim();
+
+            if clean_value == "Unknown" || clean_value.is_empty() {
+                continue;
+            }
+
+            let tokens: Vec<&str> = key.split('_').collect();
+            if tokens.len() < 3 {
+                continue;
+            }
+
+            let slot_str = tokens.get(2).copied().unwrap_or("");
+            if let Ok(slot_num) = slot_str.parse::<u32>() {
+                let stick = ram_slots_map.entry(slot_num).or_insert(RamStick {
+                    slot: slot_num,
+                    manufacturer: None,
+                    part_number: None,
+                });
+
+                if key.contains("MANUFACTURER") {
+                    stick.manufacturer = Some(clean_value.to_string());
+                } else if key.contains("PART_NUMBER") {
+                    stick.part_number = Some(clean_value.to_string());
+                }
+            }
+        }
+    }
+
+    let populated_sticks: Vec<RamStick> = ram_slots_map
+        .into_values()
+        .filter(|stick| stick.manufacturer.is_some() || stick.part_number.is_some())
+        .collect();
+
+    Ok(populated_sticks)
+}
 pub async fn background_metrics_updater(
     metrics: Arc<RwLock<MetricsSnapshot>>,
     duration: Duration,
@@ -269,8 +349,7 @@ pub async fn background_metrics_updater(
         }
     };
 
-    // Fixed: Removed `mut` and prefixed with `_` to silence unused variable warnings
-    let _cmp = match Components::new_with_refreshed_list() {
+    let mut cmp = match Components::new_with_refreshed_list() {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to initialize sysinfo components: {}", e);
@@ -293,6 +372,7 @@ pub async fn background_metrics_updater(
             }
             _ = interval.tick() => {
                 sys.refresh_all();
+                cmp.refresh(false);
 
                 let mut network_interfaces: NetworkInterfaces = Vec::new();
 
@@ -328,6 +408,11 @@ pub async fn background_metrics_updater(
                     cpus.iter().map(|c| c.frequency() as f64).sum::<f64>() / cpus.len() as f64
                 };
 
+                let ram_sticks = get_populated_ram().unwrap_or_else(|e| {
+                    eprintln!("Warning collecting RAM info: {}", e);
+                    Vec::new() // Fallback to an empty vector if udevadm fails
+                });
+
                 let total_mem_gb = sys.total_memory() as f64 / 1_073_741_824.0;
                 let used_mem_gb = sys.used_memory() as f64 / 1_073_741_824.0;
                 let free_mem_gb = sys.free_memory() as f64 / 1_073_741_824.0;
@@ -335,6 +420,8 @@ pub async fn background_metrics_updater(
                 let swap_total_mem_gb = sys.total_swap() as f64 / 1_073_741_824.0;
                 let swap_used_mem_gb = sys.used_swap() as f64 / 1_073_741_824.0;
                 let swap_free_mem_gb = sys.free_swap() as f64 / 1_073_741_824.0;
+
+                let readings = collect_temperatures(&mut cmp);
 
                 let uptime = System::uptime().unwrap_or(0);
                 let hostname = System::host_name().unwrap_or_else(|_| "unknown".to_string());
@@ -344,11 +431,12 @@ pub async fn background_metrics_updater(
                     hostname,
                     cpu: CPUInfo {
                         name: cpus.first().map_or("unknown".to_string(), |c| c.brand().to_string()),
-                        usage: cpus.iter().map(|c| c.usage()).collect(),
+                        usage: cpus.iter().map(|c| (c.usage() * 100.0).trunc() / 100.0).collect(),
                         avg_usage: avg_cpu,
-                        frequency: cpus.iter().map(|c| c.frequency() as f64 / 1_000.0).collect(),
+                        frequency: cpus.iter().map(|c| ((c.frequency() as f64 / 1_000.0) * 100.0).trunc() / 100.0).collect(),
                         avg_frequency: avg_cpu_frequency / 1_000.0
                     },
+                    ram_sticks,
                     memory: MemoryInfo {
                         total_gb: total_mem_gb,
                         used_gb: used_mem_gb,
@@ -364,6 +452,7 @@ pub async fn background_metrics_updater(
                       static_info: gpu_static_info.clone(),
                       dynamic_info: parse_gpu_dynamic_info().expect("Critical: Failed to read Dynamic GPU hardware properties"),
                     },
+                    temp_sensor_readings:readings,
                     network_interfaces,
                     uptime_secs: uptime,
                     polling_interval_secs: duration.as_secs() as u8,
