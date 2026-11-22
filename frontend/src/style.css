@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+body {
+  @apply bg-mist-950 h-screen text-mist-50
+}
+
+body::-webkit-scrollbar {
+  display: none;
+}
