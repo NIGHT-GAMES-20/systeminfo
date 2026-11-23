@@ -51,8 +51,7 @@
         <LineChart
           title="Temperature"
           :latest-value="cpu_readings[0]?.temp_celsius ?? 0"
-          :maxScale="80"
-          :minScale="20"
+          :minScale="30"
           unit="&deg;C"
           class="h-40 w-full mb-10"
           titleClass="text-lg text-orange-400"
@@ -71,7 +70,6 @@
         <LineChart
           title="Power Usage"
           :latest-value="Number((cpu?.package_watts ?? 0).toFixed(1))"
-          :maxScale="35"
           :minScale="0"
           unit="W"
           class="h-40 w-full mb-10"

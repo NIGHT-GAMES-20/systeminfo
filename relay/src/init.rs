@@ -40,6 +40,7 @@ impl Default for MetricsSnapshot {
             },
             temp_sensor_readings: vec![],
             network_interfaces: vec![],
+            processes: vec![],
             uptime_secs: 0,
             polling_interval_secs: 5,
             timestamp: "".to_string(),

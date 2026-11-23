@@ -82,7 +82,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  pollInterval: 1000,
+  pollInterval: Number(localStorage.getItem("polling_rate") ?? 5) * 1000,
   title: '',
   unit: '%',
   maxItems: 40,
@@ -241,7 +241,14 @@ const chartData = computed<ChartData<'line'>>(() => ({
 const chartOptions = computed<ChartOptions<'line'>>(() => ({
   responsive: true,
   maintainAspectRatio: false,
-  animation: { duration: 150 },
+  animation: false,
+  transitions: {
+    active: {
+      animation: {
+        duration: 0,
+      },
+    },
+  },
   interaction: {
     mode: 'index',
     intersect: false

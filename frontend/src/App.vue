@@ -31,7 +31,7 @@ import { useSystemMetrics } from './composables/useSystemMetrics';
 import { useClimateMetrics } from './composables/useClimateMetrics';
 
 const selected = ref("cpu")
-const DEFAULT_RATE = 1 // seconds
+const DEFAULT_RATE = 5 // seconds
 
 function changeSelection(id: string): void {
   selected.value = id;
@@ -54,18 +54,19 @@ onMounted(async () => {
   const systemMetrics = useSystemMetrics()
   const climateMetrics = useClimateMetrics()
   const rate = resolvePollingRate()
+  localStorage.setItem('polling_rate', String(rate))
 
   // Always tell the backend, so both sides agree even with an empty profile
-  await systemMetrics.updatePollingRate('http://localhost:3000/change-interval', rate)
-  await systemMetrics.fetchMetrics('http://localhost:3000/metrics')
+  await systemMetrics.updatePollingRate('/systeminfo/api/set-interval', rate)
+  await systemMetrics.fetchMetrics('/systeminfo/api/metrics')
   await climateMetrics.updateClimateMetrics()
 
   metricsTimer = window.setInterval(async () => {
-    await systemMetrics.fetchMetrics('http://localhost:3000/metrics')
+    await systemMetrics.fetchMetrics('/systeminfo/api/metrics')
   }, rate * 1000)
 
   updatePollingRateTimer = window.setInterval(async () => {
-    await systemMetrics.updatePollingRate('http://localhost:3000/change-interval', rate)
+    await systemMetrics.updatePollingRate('/systeminfo/api/set-interval', rate)
   }, 60 * 1000)
 
   climateTimer = window.setInterval(() => {

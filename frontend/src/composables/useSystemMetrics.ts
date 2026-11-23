@@ -12,7 +12,11 @@ export function useSystemMetrics() {
 
   const updatePollingRate = async (url: string = '/change-interval', sec: number) => {
     try{
-      const res = await fetch(`${url}?seconds=${sec}`);
+      const res = await fetch(`${url}?seconds=${sec}`,
+        {
+          method: "POST"
+        }
+      );
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json()
       if (!data.ok) throw new Error(`Server error! Failed to Change Polling Rate: ${data.error}`)

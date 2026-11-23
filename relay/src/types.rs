@@ -15,8 +15,9 @@ pub struct MetricsSnapshot {
     pub storage: StorageSummary,
     pub temp_sensor_readings: Vec<TempSensorReading>,
     pub network_interfaces: NetworkInterfaces,
+    pub processes: Vec<ProcessInfo>,
     pub uptime_secs: u64,
-    pub polling_interval_secs: u8,
+    pub polling_interval_secs: u64,
     pub timestamp: String,
 }
 
@@ -160,45 +161,11 @@ pub struct TempSensorReading {
     pub crit_celsius: Option<f32>, // e.g., Some(70.0)
 }
 
-#[derive(Serialize)]
-pub struct JsonResponse {
-    pub ok: bool,
-    pub message: Option<String>,
-    pub error: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct IntervalQuery {
-    pub seconds: u64,
-}
-
-pub struct AppState {
-    pub metrics: Arc<RwLock<MetricsSnapshot>>,
-    pub interval_secs: Arc<RwLock<u64>>,
-    pub smart_config: Arc<RwLock<SmartConfig>>,
-    pub cancel_token: Arc<RwLock<CancellationToken>>,
-}
-
 #[derive(Serialize, Clone)]
 pub struct RamStick {
     pub slot: u32,
     pub manufacturer: Option<String>,
     pub part_number: Option<String>,
-}
-
-#[derive(Clone, Copy)]
-pub struct RaplState {
-    pub energy_uj: u64,
-    pub timestamp: std::time::Instant,
-}
-
-#[derive(Debug, Clone)]
-pub struct SmartConfig {
-    /// Target interval in seconds (enforced minimum: 300s / 5 mins)
-    pub interval_secs: u64,
-    /// Map of device path (e.g., "/dev/sda" or "/dev/disk/by-id/usb-...")
-    /// to extra CLI arguments (e.g., vec!["-d".into(), "sat".into()])
-    pub device_extra_args: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -276,10 +243,79 @@ pub struct DiskIoRawState {
     pub timestamp: std::time::Instant,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub name: String,
+    pub user: String,
+    pub command: String,
+    pub cpu_usage: f32,
+    pub memory_bytes: u64,
+    pub memory_mb: f64,
+    pub status: String,
+    pub run_time_secs: u64,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum SortMetric {
+    Cpu,
+    Memory,
+    Pid,
+    RunTime,
+}
+
+#[derive(Serialize)]
+pub struct JsonResponse {
+    pub ok: bool,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SmartDeviceArgsPayload {
     /// Device path, e.g. "/dev/sdb" or "/dev/disk/by-id/usb-..."
     pub device: String,
     /// Extra smartctl arguments, e.g. ["-d", "sat", "-n", "standby"]
     pub args: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct IntervalQuery {
+    pub seconds: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProcessesConfigPayload {
+    pub count: usize,
+    pub sort: SortMetric,
+}
+
+#[derive(Clone)]
+pub struct AppState {
+    pub metrics: Arc<RwLock<MetricsSnapshot>>,
+    pub interval_secs: Arc<RwLock<u64>>,
+    pub processes_config: Arc<RwLock<ProcessesConfig>>,
+    pub smart_config: Arc<RwLock<SmartConfig>>,
+    pub cancel_token: Arc<RwLock<CancellationToken>>,
+}
+
+#[derive(Clone, Copy)]
+pub struct RaplState {
+    pub energy_uj: u64,
+    pub timestamp: std::time::Instant,
+}
+
+#[derive(Debug, Clone)]
+pub struct SmartConfig {
+    /// Target interval in seconds (enforced minimum: 300s / 5 mins)
+    pub interval_secs: u64,
+    /// Map of device path (e.g., "/dev/sda" or "/dev/disk/by-id/usb-...")
+    /// to extra CLI arguments (e.g., vec!["-d".into(), "sat".into()])
+    pub device_extra_args: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ProcessesConfig {
+    pub count: usize,
+    pub sort: SortMetric,
 }

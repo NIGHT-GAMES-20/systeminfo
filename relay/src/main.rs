@@ -1,5 +1,6 @@
 mod background_worker;
 mod helper_functions;
+mod info_collectors;
 mod init;
 mod types;
 
@@ -15,21 +16,15 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::{ServeDir, ServeFile};
 use types::*;
 
-impl Clone for AppState {
-    fn clone(&self) -> Self {
-        Self {
-            metrics: Arc::clone(&self.metrics),
-            interval_secs: Arc::clone(&self.interval_secs),
-            smart_config: Arc::clone(&self.smart_config),
-            cancel_token: Arc::clone(&self.cancel_token),
-        }
-    }
-}
-
 /// Helper to cancel the active worker and spawn a new one with updated settings
-async fn restart_background_worker(state: &AppState, interval_secs: u64) {
+async fn restart_background_worker(
+    state: &AppState,
+    processes_config: ProcessesConfig,
+    interval_secs: u64,
+) {
     // 1. Cancel currently running loop
     {
         let cancel_guard = state.cancel_token.read().await;
@@ -50,7 +45,14 @@ async fn restart_background_worker(state: &AppState, interval_secs: u64) {
     let duration = Duration::from_secs(interval_secs);
 
     tokio::spawn(async move {
-        background_metrics_updater(metrics_clone, duration, smart_cfg_snapshot, worker_token).await;
+        background_metrics_updater(
+            metrics_clone,
+            duration,
+            processes_config,
+            smart_cfg_snapshot,
+            worker_token,
+        )
+        .await;
     });
 }
 
@@ -101,8 +103,10 @@ async fn change_interval(
         smart_guard.interval_secs = smart_secs;
     }
 
+    let processes_config: ProcessesConfig = *state.processes_config.read().await;
+
     // 3. Restart background worker
-    restart_background_worker(&state, params.seconds).await;
+    restart_background_worker(&state, processes_config, params.seconds).await;
 
     Json(JsonResponse {
         ok: true,
@@ -145,7 +149,8 @@ async fn set_smart_device_args(
     }
 
     let current_interval = *state.interval_secs.read().await;
-    restart_background_worker(&state, current_interval).await;
+    let processes_config: ProcessesConfig = *state.processes_config.read().await;
+    restart_background_worker(&state, processes_config, current_interval).await;
 
     Json(JsonResponse {
         ok: true,
@@ -157,6 +162,37 @@ async fn set_smart_device_args(
     })
 }
 
+async fn set_processes_config(
+    State(state): State<AppState>,
+    Json(payload): Json<ProcessesConfigPayload>,
+) -> Json<JsonResponse> {
+    if payload.count == 0 {
+        return Json(JsonResponse {
+            ok: false,
+            message: None,
+            error: Some("Process count must be greater than 0.".into()),
+        });
+    }
+
+    let processes_config = {
+        let mut guard = state.processes_config.write().await;
+        guard.count = payload.count;
+        guard.sort = payload.sort;
+        *guard
+    };
+
+    let current_interval = *state.interval_secs.read().await;
+    restart_background_worker(&state, processes_config, current_interval).await;
+
+    Json(JsonResponse {
+        ok: true,
+        message: Some(format!(
+            "Updated processes config to count: {} and sort: {:?}, and triggered a fresh scan.",
+            payload.count, payload.sort
+        )),
+        error: None,
+    })
+}
 // --- 4. Main Setup ---
 
 #[tokio::main]
@@ -177,9 +213,15 @@ async fn main() {
         device_extra_args: initial_device_args,
     };
 
+    let initial_processes_config = ProcessesConfig {
+        count: 20,
+        sort: SortMetric::Cpu,
+    };
+
     let state = AppState {
         metrics: Arc::new(RwLock::new(MetricsSnapshot::default())),
         interval_secs: Arc::new(RwLock::new(default_interval_secs)),
+        processes_config: Arc::new(RwLock::new(initial_processes_config)),
         smart_config: Arc::new(RwLock::new(initial_smart_config.clone())),
         cancel_token: Arc::new(RwLock::new(initial_token.clone())),
     };
@@ -190,11 +232,15 @@ async fn main() {
         background_metrics_updater(
             metrics_clone,
             Duration::from_secs(default_interval_secs),
+            initial_processes_config,
             initial_smart_config,
             initial_token,
         )
         .await;
     });
+
+    let static_files =
+        ServeDir::new("/srv/www").not_found_service(ServeFile::new("/srv/www/index.html"));
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -203,15 +249,23 @@ async fn main() {
 
     // Build Axum router with chained paths
     let app = Router::new()
-        .route("/metrics", get(get_metrics))
-        .route("/change-interval", get(change_interval))
-        .route("/smart-args", post(set_smart_device_args))
+        .route("/systeminfo/api/metrics", get(get_metrics))
+        .route("/systeminfo/api/set-interval", post(change_interval))
+        .route(
+            "/systeminfo/api/set-smart-args",
+            post(set_smart_device_args),
+        )
+        .route(
+            "/systeminfo/api/set-processes-config",
+            post(set_processes_config),
+        )
+        .fallback_service(static_files)
         .with_state(state)
         .layer(cors);
 
     // Start server
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("Telemetry server ready on http://0.0.0.0:3000/metrics");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:9870").await.unwrap();
+    println!("Telemetry server ready on http://0.0.0.0:9870/systeminfo/api/metrics");
 
     axum::serve(listener, app).await.unwrap();
 }
