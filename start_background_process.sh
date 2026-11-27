@@ -95,7 +95,19 @@ else
   sudo cp -r "$PROJECT_DIR/frontend/dist/"* "$INSTALL_DIR/www/"
 fi
 
+PACKAGE="caddy"
+
+if dpkg-query -W -f='${Status}' "$PACKAGE" 2>/dev/null | grep -q "install ok installed"; then
+    echo "$PACKAGE is already installed."
+else
+    echo "$PACKAGE is not installed. Installing now..."
+    sudo apt-get update && sudo apt-get install -y "$PACKAGE"
+fi
+
 echo "==> [4/5] Ensuring systemd service & global Caddy config exist..."
+
+sudo systemctl start caddy
+
 if [ ! -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
     sudo tee "/etc/systemd/system/${SERVICE_NAME}.service" > /dev/null << SERVICE_EOF
 [Unit]

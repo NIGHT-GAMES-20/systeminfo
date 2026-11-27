@@ -83,8 +83,14 @@ pub async fn background_metrics_updater(
             }
         });
 
-    let gpu_static_info =
-        parse_gpu_static_info().expect("Critical: Failed to read static GPU hardware properties");
+    // `None` means no usable NVIDIA GPU; GPU polling is then skipped entirely.
+    let gpu_static_info = match parse_gpu_static_info() {
+        Ok(info) => Some(info),
+        Err(e) => {
+            eprintln!("GPU metrics disabled: {}", e);
+            None
+        }
+    };
 
     loop {
         tokio::select! {
@@ -208,6 +214,20 @@ pub async fn background_metrics_updater(
                 let hostname = System::host_name().unwrap_or_else(|_| "unknown".to_string());
                 let timestamp = Local::now().to_rfc3339();
 
+                let gpu = match &gpu_static_info {
+                    Some(static_info) => GPUInfo {
+                        static_info: static_info.clone(),
+                        dynamic_info: parse_gpu_dynamic_info().unwrap_or_else(|e| {
+                            eprintln!("Warning collecting GPU info: {}", e);
+                            Default::default()
+                        }),
+                    },
+                    None => GPUInfo {
+                        static_info: Default::default(),
+                        dynamic_info: Default::default(),
+                    },
+                };
+
                 let new_snapshot = MetricsSnapshot {
                     hostname,
                     cpu: CPUInfo {
@@ -230,10 +250,7 @@ pub async fn background_metrics_updater(
                         used_gb: swap_used_mem_gb,
                         free_gb: swap_free_mem_gb,
                     },
-                    gpu: GPUInfo {
-                      static_info: gpu_static_info.clone(),
-                      dynamic_info: parse_gpu_dynamic_info().expect("Critical: Failed to read Dynamic GPU hardware properties"),
-                    },
+                    gpu,
                     storage,
                     temp_sensor_readings:readings,
                     network_interfaces,
