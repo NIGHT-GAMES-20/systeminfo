@@ -11,6 +11,20 @@
         </button>
       </div>
       <ul class="list-none flex flex-col gap-3 pt-20" key="menu">
+        <li class="flex flex-row gap-5 items-center p-2  bg-teal-500/20 text-teal-300 w-full rounded-xl cursor-pointer" @click="() => node_modal_open = true" >
+          <GraphStar :size="18" />
+          <span>
+            Nodes
+          </span>
+          <NodeModal :isOpen="node_modal_open" @exit="() => node_modal_open = false" />
+        </li>
+        <li class="flex flex-row gap-5 items-center p-2  bg-teal-500/20 text-teal-300 w-full rounded-xl cursor-pointer" @click="() => settings_modal_open = true" >
+          <Settings :size="18" />
+          <span>
+            Settings
+          </span>
+          <SettingsModal :isOpen="settings_modal_open" @exit="() => settings_modal_open = false" />
+        </li>
         <li
           v-for="item in menuItems"
           :key="item.id"
@@ -31,6 +45,14 @@
         <PanelLeftOpen :size="20"/>
       </button>
       <ul class="list-none flex flex-col gap-3 pt-20" key="menu">
+        <li class="flex flex-row gap-5 items-center p-2  bg-teal-500/20 text-teal-300 w-full rounded-xl" @click="() => node_modal_open = true" >
+          <GraphStar :size="18" />
+          <NodeModal :isOpen="node_modal_open" @exit="() => node_modal_open = false" />
+        </li>
+        <li class="flex flex-row gap-5 items-center p-2  bg-teal-500/20 text-teal-300 w-full rounded-xl" @click="() => settings_modal_open = true" >
+          <Settings :size="18" />
+          <SettingsModal :isOpen="settings_modal_open" @exit="() => settings_modal_open = false" />
+        </li>
         <li
           v-for="item in menuItems"
           :key="item.id"
@@ -45,8 +67,10 @@
   </div>
 </template>
 <script setup lang="ts">
-import { PanelLeftClose, PanelLeftOpen, Cpu, MemoryStick, Gpu, HardDrive, DiagramFlowHorizontal , Network, Settings } from '@lucide/vue';
+import { PanelLeftClose, PanelLeftOpen, Cpu, MemoryStick, Gpu, HardDrive, DiagramFlowHorizontal , Network, Settings, GraphStar } from '@lucide/vue';
 import { ref } from 'vue';
+import NodeModal from './NodeModal.vue';
+import SettingsModal from './SettingsModal.vue'
 
 const emit = defineEmits < {
   selected: [id: string]
@@ -56,6 +80,8 @@ const props = defineProps<{
   selected: string
 }>()
 
+const node_modal_open = ref(false)
+const settings_modal_open = ref(false)
 
 const showExtendedLeftPanel = ref(localStorage.getItem("panel_extended") ?? false);
 const menuItems = [
@@ -64,8 +90,7 @@ const menuItems = [
   { id: 'gpu', label: 'GPU', icon: Gpu },
   { id: 'drives', label: 'Drives', icon: HardDrive },
   { id: 'network', label: 'Networks', icon: Network },
-  { id: 'processes', label: 'Processes', icon: DiagramFlowHorizontal },
-  { id: 'settings', label: 'Settings', icon: Settings},
+  { id: 'processes', label: 'Processes', icon: DiagramFlowHorizontal }
 ];
 
 function panelControl() : void {

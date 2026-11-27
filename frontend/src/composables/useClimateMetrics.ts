@@ -43,7 +43,7 @@ export function useClimateMetrics() {
   }
 
   async function getCoordinates() {
-    if (!address.value) address.value = localStorage.getItem("targetAddress") ?? "London"
+    if (!address.value) address.value = localStorage.getItem("target_address") ?? "London"
 
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address.value)}&format=json&limit=1`;
     try {
@@ -67,7 +67,7 @@ export function useClimateMetrics() {
 
   async function updateLocation(addr: string) {
     if (!addr) return;
-    localStorage.setItem("targetAddress", addr);
+    localStorage.setItem("target_adddress", addr);
     address.value = addr;
     await getCoordinates();
   }

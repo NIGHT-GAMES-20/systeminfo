@@ -5,7 +5,7 @@
       <ClimateSection/>
       <div class="flex flex-1 flex-col gap-5 pt-10 items-center w-full">
         <SectionWrapper class="max-w-[calc(100%-8rem)]" :id="'cpu'" :activeSection="selected" @section-enter="changeSelection">
-          <CpuSection />
+          <CpuSection :url="url" />
         </SectionWrapper>
         <SectionWrapper class="max-w-[calc(100%-8rem)]" :id="'ram'" :activeSection="selected" @section-enter="changeSelection">
           <MemorySection />
@@ -33,6 +33,10 @@ import { useClimateMetrics } from './composables/useClimateMetrics';
 const selected = ref("cpu")
 const DEFAULT_RATE = 5 // seconds
 
+const urlName = localStorage.getItem('selected_node') ?? "default"
+const urls = JSON.parse(localStorage.getItem('available_nodes') ?? '{"default": "/systeminfo/api"}')
+const url = urls[urlName]
+
 function changeSelection(id: string): void {
   selected.value = id;
   console.log(id)
@@ -57,16 +61,16 @@ onMounted(async () => {
   localStorage.setItem('polling_rate', String(rate))
 
   // Always tell the backend, so both sides agree even with an empty profile
-  await systemMetrics.updatePollingRate('/systeminfo/api/set-interval', rate)
-  await systemMetrics.fetchMetrics('/systeminfo/api/metrics')
+  await systemMetrics.updatePollingRate(`${url}/set-interval`, rate)
+  await systemMetrics.fetchMetrics(`${url}/metrics`)
   await climateMetrics.updateClimateMetrics()
 
   metricsTimer = window.setInterval(async () => {
-    await systemMetrics.fetchMetrics('/systeminfo/api/metrics')
+  await systemMetrics.fetchMetrics(`${url}/metrics`)
   }, rate * 1000)
 
   updatePollingRateTimer = window.setInterval(async () => {
-    await systemMetrics.updatePollingRate('/systeminfo/api/set-interval', rate)
+    await systemMetrics.updatePollingRate(`${url}/set-interval`, rate)
   }, 60 * 1000)
 
   climateTimer = window.setInterval(() => {

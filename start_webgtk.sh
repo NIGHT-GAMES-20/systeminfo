@@ -8,10 +8,45 @@ KILLER="$HOME/.local/bin/kill-systeminfo-kiosk.sh"
 AUTOSTART_FILE="$HOME/.config/autostart/systeminfo-kiosk.desktop"
 CONF_FILE="$HOME/.config/systeminfo-kiosk.env"
 
-# Optional CLI arg: ./start_webgtk.sh [url] [monitor_index_or_name] (e.g., 0, 1, HDMI-0, HDMI-1)
 # No arg = auto: default URL and first non-primary monitor if one exists, otherwise the primary.
-KIOSK_URL="${1:-${KIOSK_URL:-$DEFAULT_URL}}"
-TARGET_MONITOR="${2:-${MONITOR:-}}"
+CLI_URL=""
+CLI_MONITOR=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -u|--url|--kiosk-url)
+      CLI_URL="$2"
+      shift 2
+      ;;
+    --url=*|--kiosk-url=*)
+      CLI_URL="${1#*=}"
+      shift
+      ;;
+
+    -m|--monitor|--target-monitor)
+      CLI_MONITOR="$2"
+      shift 2
+      ;;
+    --monitor=*|--target-monitor=*)
+      CLI_MONITOR="${1#*=}"
+      shift
+      ;;
+
+    -h|--help)
+      echo "Usage: $0 [--kiosk-url <url>] [--monitor <index_or_name>]"
+      exit 0
+      ;;
+
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Priority: CLI switch > Environment Variable > Default
+KIOSK_URL="${CLI_URL:-${KIOSK_URL:-$DEFAULT_URL}}"
+TARGET_MONITOR="${CLI_MONITOR:-${MONITOR:-}}"
 
 
 
